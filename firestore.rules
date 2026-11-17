@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['username','displayName','country','bio','level','followersCount','followingCount','createdAt'])
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[A-Za-z0-9_]{3,20}$')
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.country is string
+        && request.resource.data.country.size() <= 56
+        && request.resource.data.bio == ''
+        && request.resource.data.level == 1
+        && request.resource.data.followersCount == 0
+        && request.resource.data.followingCount == 0
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username.lower())).data.uid == uid;
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','country','bio']);
+      allow delete: if false;
+    }
+
+    match /usernames/{name} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && name.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username.lower() == name;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/blocked/{bid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name','createdAt']);
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow update: if false;
+    }
+
+    match /streams/{sid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['hostUid','hostName','title','country','status','startedAt','lastBeat'])
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.status == 'live'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.startedAt == request.time
+        && request.resource.data.lastBeat == request.time;
+      allow update: if request.auth != null
+        && resource.data.hostUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastBeat']);
+      allow delete: if request.auth != null && resource.data.hostUid == request.auth.uid;
+
+      match /comments/{cid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['uid','name','text','createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 200
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+
+      match /viewers/{vid} {
+        allow read: if request.auth != null;
+        allow create, update: if request.auth != null
+          && request.auth.uid == vid
+          && request.resource.data.keys().hasOnly(['name','joinedAt']);
+        allow delete: if request.auth != null && request.auth.uid == vid;
+      }
+    }
+
+    match /reports/{rid} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['reporterUid','streamId','targetUid','reason','createdAt'])
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 40;
+      allow read, update, delete: if false;
+    }
+  }
+}
